@@ -4,18 +4,75 @@ from extract import extract_syllabus, extract_text_from_pdf
 from planner import allocate_hours, generate_weekly_plan, clean_json_response
 from pdf_exprt import generate_pdf, load_timetable
 from remainder import send_daily_nudge
+from scheduler import save_schedule
 
 
-st.set_page_config(page_title="Study Pilot", page_icon="📚")
+st.set_page_config(
+    page_title="Study Pilot",
+    page_icon="📚",
+    layout="wide"
+)
+st.markdown("""
+<style>
+
+.main {
+    background-color: #f5f7fb;
+}
+
+.study-card {
+    padding: 15px;
+    border-radius: 12px;
+    margin-bottom: 10px;
+    background-color: #e8f5e9;
+    border-left: 6px solid #2e7d32;
+}
+
+.big-title {
+    font-size: 40px;
+    font-weight: bold;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
 st.title(("📚 Study Pilot"))
 st.caption("Stop guessing what to study, ask your agent instead")
 st.header("Your study profile")
 
-uploaded_file = st.file_uploader("Upload your syllabus pdf file", type=["pdf"])
-email = st.text_input("Your email (for daily nudge)")
-hours = st.slider("Daily study hours", min_value=1, max_value=8, value=4)
+with st.sidebar:
 
-if st.button("🚀 Generate Plan"):
+    st.header("⚙ Study Profile")
+
+    uploaded_file = st.file_uploader(
+        "Upload Syllabus PDF",
+        type=["pdf"]
+    )
+
+    email = st.text_input(
+        "Your Email"
+    )
+
+    hours = st.slider(
+        "Daily Study Hours",
+        min_value=1,
+        max_value=8,
+        value=4
+    )
+
+    exam_date = st.date_input(
+        "📅 Exam Date"
+    )
+
+    send_time = st.time_input(
+    "Daily Reminder Time"
+    )
+
+    generate_btn = st.button(
+        "🚀 Generate Plan",
+        use_container_width=True
+    )
+
+if generate_btn:
     if not uploaded_file:
         st.error("Please upload a syllabus pdf file")
         st.stop()
@@ -53,6 +110,7 @@ if st.button("🚀 Generate Plan"):
         cleaned_timetable = cleaned_timetable[start : end + 1]
 
         timetable_data = json.loads(cleaned_timetable)
+        st.session_state["timetable_data"] = timetable_data
 
         with open("timetable.json", "w") as f:
             json.dump(timetable_data, f, indent=2)
@@ -62,18 +120,49 @@ if st.button("🚀 Generate Plan"):
         generate_pdf(rows, summary, output_path="timetable.pdf")
             
     st.success("✅ Plan Completed")
+
+    from datetime import date
+
+    days_left = (
+        exam_date - date.today()
+    ).days
+
+    st.metric(
+        "Days Until Exam",
+        days_left
+    )
+
+    col1,col2,col3 = st.columns(3)
+
+    with col1:
+        st.button("📋 Study Plan")
+
+    with col2:
+        st.button("📄 PDF Export")
+
+    with col3:
+        st.button("📧 Email")
         
     st.header("📋 Your weekly Timetable")
     for day in timetable_data["timetable"]:
-        st.subheader(f"Day {day['day']} - {day['date']}")
-        for slot in day['slots']:
-            chapters = ", ".join(slot["chapters_to_cover"])
-            st.write(f"**{slot['subject']}** . {slot['duration_minutes']} min")
-            st.caption(chapters)
-                
-            if slot.get("notes"):
-                st.caption(f"📝 {slot['notes']}")
-        st.divider()
+
+        for slot in day["slots"]:
+
+            chapters = ", ".join(
+                slot["chapters_to_cover"]
+            )
+
+            st.markdown(
+                f"""
+                <div class='study-card'>
+                    <h4>📅 Day {day['day']} - {day['date']}</h4>
+                    <b>{slot['subject']}</b><br>
+                    {chapters}<br><br>
+                    ⏰ {slot['duration_minutes']} minutes
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
             
     with open("timetable.pdf", "rb") as f:
         st.download_button(
@@ -83,11 +172,21 @@ if st.button("🚀 Generate Plan"):
             mime="application/pdf"
         )
 
-    if email:
-        try:
-            send_daily_nudge(rows, recipient_email=email)
-            st.success(f"Daily nudge sent to {email}")
-        except Exception as e:
-            st.warning(f"Couldn't send the email {e}")
-    else:
-        st.info("Please add the email to get notification")
+# EMAIL SECTION
+
+if "timetable_data" in st.session_state:
+
+    st.divider()
+
+    st.subheader("📧 Daily Email Reminder")
+
+    if st.button("📧 Start Daily Emails"):
+
+        save_schedule(
+            email,
+            str(send_time)
+        )
+
+        st.success(
+            "✅ schedule.json created successfully."
+        )        
